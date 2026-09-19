@@ -35,6 +35,8 @@ Also:
 
 Every tool has a typed output schema (`structuredContent`) and read-only annotations. The long-running tools report progress.
 
+**Inline chart (MCP Apps).** `capture_chart` and `get_range_chart` link a small HTML view (`ui://futures-mcp/chart.html`). Hosts that support [MCP Apps](https://github.com/modelcontextprotocol/ext-apps), such as Claude Desktop, render the chart with its verdict and levels directly in the chat. Other hosts ignore it and still get the image and JSON.
+
 ## How it works
 
 ```mermaid

@@ -194,3 +194,16 @@ async def test_resources_and_prompt(tmp_path: Path, ranged: Window) -> None:
     assert '"capture_mode": "anonymous"' in status.contents[0].text  # type: ignore[union-attr]
     text = prompt.messages[0].content
     assert isinstance(text, TextContent) and "analyze_range" in text.text
+
+
+async def test_chart_tools_link_the_mcp_apps_view(tmp_path: Path, ranged: Window) -> None:
+    async with Client(build_server(make_service(tmp_path, ranged))) as client:
+        tools = {t.name: t for t in (await client.list_tools()).tools}
+        uri = (tools["get_range_chart"].meta or {})["ui"]["resourceUri"]
+        view = await client.read_resource(uri)
+    assert uri.startswith("ui://")
+    assert (tools["capture_chart"].meta or {})["ui"]["resourceUri"] == uri
+    assert "ui" not in (tools["analyze_range"].meta or {})
+    page = view.contents[0]
+    assert page.mime_type == "text/html;profile=mcp-app"
+    assert "ontoolresult" in page.text  # type: ignore[union-attr]

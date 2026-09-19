@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="light dark">
+<style>
+  :root { --fg: #1a1a1a; --muted: #666; --line: #ddd; --chip: #eee; --ok: #1b7f3b; --warn: #b26a00; --none: #777; }
+  :root.dark { --fg: #eee; --muted: #aaa; --line: #333; --chip: #2a2a2a; --ok: #4cc27a; --warn: #f0a33a; --none: #999; }
+  html, body { margin: 0; background: transparent; color: var(--fg);
+    font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  #root { padding: 4px 2px 8px; }
+  .head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .chip { font-weight: 600; font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--chip); }
+  .chip.COMPLETED { color: var(--ok); } .chip.NOT_COMPLETED { color: var(--warn); } .chip.NO_RANGE { color: var(--none); }
+  .meta { color: var(--muted); font-size: 12px; }
+  img { display: block; width: 100%; height: auto; border-radius: 6px; border: 1px solid var(--line); }
+  ul { margin: 8px 0 0; padding-left: 18px; } li { margin: 2px 0; }
+  .warn { color: var(--warn); font-size: 12px; margin-top: 6px; }
+  .wait { color: var(--muted); padding: 12px 2px; }
+</style>
+</head>
+<body>
+<div id="root"><div class="wait">Capturing the chart… (20–50 s)</div></div>
+<script type="module">
+  import { App } from "https://unpkg.com/@modelcontextprotocol/ext-apps@2.0.0/app-with-deps";
+
+  const root = document.getElementById("root");
+  const el = (tag, cls, text) => {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  };
+  const num = (x) => Number(x).toFixed(2);
+
+  function render({ content, structuredContent: sc, isError }) {
+    root.replaceChildren();
+    if (isError) {
+      const msg = content?.find((c) => c.type === "text")?.text ?? "The tool failed.";
+      root.append(el("div", "warn", msg));
+      return;
+    }
+    const report = sc?.report;
+    const head = el("div", "head");
+    if (report) {
+      head.append(el("span", `chip ${report.verdict}`, report.verdict.replace("_", " ")));
+      head.append(el("span", "meta",
+        `${report.symbol} · ${report.timeframe} · ${report.window_trading_days} trading days to ${report.target_date}`));
+    } else if (sc) {
+      head.append(el("span", "meta", `TradingView chart · ${sc.mode} mode`));
+    }
+    root.append(head);
+
+    const img = content?.find((c) => c.type === "image");
+    if (img) {
+      const mime = ["image/png", "image/jpeg"].includes(img.mimeType) ? img.mimeType : "image/png";
+      const pic = el("img");
+      pic.alt = report?.summary ?? "TradingView chart";
+      pic.src = `data:${mime};base64,${img.data}`;
+      root.append(pic);
+    }
+
+    if (report?.structures?.length) {
+      const ul = el("ul");
+      report.structures.forEach((s, i) => {
+        const broke = s.broke ? ` · broke ${s.broke}` : " · still holding";
+        ul.append(el("li", null,
+          `#${i + 1} ${s.verdict.replace("_", " ")}: S ${num(s.support)} / R ${num(s.resistance)} · ` +
+          `${s.rejections.length} rejections${broke}`));
+      });
+      root.append(ul);
+    }
+    for (const w of sc?.warnings ?? []) root.append(el("div", "warn", w));
+  }
+
+  function applyTheme(ctx) {
+    if (ctx?.theme) document.documentElement.classList.toggle("dark", ctx.theme === "dark");
+  }
+
+  const app = new App({ name: "Futures MCP chart", version: "1.0.0" });
+  app.ontoolresult = render;
+  app.onhostcontextchanged = applyTheme;
+  await app.connect();
+  applyTheme(app.getHostContext());
+</script>
+</body>
+</html>

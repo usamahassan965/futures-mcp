@@ -10,6 +10,7 @@ import logging
 import sys
 from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import asynccontextmanager, contextmanager
+from importlib.resources import files
 from typing import Annotated, Any, Literal
 
 from mcp.server.mcpserver import Context, MCPServer
@@ -50,6 +51,12 @@ EndDate = Annotated[
     str | None,
     Field(description="Last trading day of the window, YYYY-MM-DD. Omit for the current one."),
 ]
+
+# MCP Apps: hosts that support the extension (e.g. Claude Desktop) render this view
+# inline under the tool call; others ignore the metadata and still get the image.
+CHART_VIEW_URI = "ui://futures-mcp/chart.html"
+CHART_VIEW_MIME = "text/html;profile=mcp-app"
+CHART_VIEW = {"ui": {"resourceUri": CHART_VIEW_URI}, "ui/resourceUri": CHART_VIEW_URI}
 
 READ_ONLY = ToolAnnotations(read_only_hint=True, open_world_hint=True, idempotent_hint=True)
 
@@ -131,7 +138,7 @@ def build_server(service: FuturesService | None = None) -> MCPServer:
         with _tool_errors():
             return await svc.bars(symbol, timeframe, days, parse_date(end_date), include_bars)
 
-    @mcp.tool(title="Capture TradingView chart", annotations=READ_ONLY)
+    @mcp.tool(title="Capture TradingView chart", annotations=READ_ONLY, meta=CHART_VIEW)
     async def capture_chart(
         symbol: Symbol = "GC1!",
         timeframe: Timeframe = "H1",
@@ -162,7 +169,7 @@ def build_server(service: FuturesService | None = None) -> MCPServer:
         with _tool_errors():
             return await svc.analyze(symbol, timeframe, days, parse_date(end_date))
 
-    @mcp.tool(title="Range chart", annotations=READ_ONLY)
+    @mcp.tool(title="Range chart", annotations=READ_ONLY, meta=CHART_VIEW)
     async def get_range_chart(
         symbol: Symbol = "GC1!",
         timeframe: RangeTimeframe = "H1",
@@ -190,6 +197,12 @@ def build_server(service: FuturesService | None = None) -> MCPServer:
                   description="Capture mode, detector and OCR availability")
     def status() -> str:
         return json.dumps(svc.status(), indent=2)
+
+    @mcp.resource(CHART_VIEW_URI, name="chart_view", mime_type=CHART_VIEW_MIME,
+                  description="Inline chart view for MCP Apps hosts",
+                  meta={"ui": {"csp": {"resourceDomains": ["https://unpkg.com"]}}})
+    def chart_view() -> str:
+        return (files("futures_mcp") / "ui" / "chart.html").read_text(encoding="utf-8")
 
     @mcp.prompt(title="Check for a range setup")
     def range_check(symbol: str = "GC1!", days: str = "3") -> str:
