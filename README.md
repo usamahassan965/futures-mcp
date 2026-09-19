@@ -90,6 +90,17 @@ server imports `range_screener_v6.py` from `FUTURES_MCP_DETECTOR_DIR` (default
 Without the detector, `get_futures_bars` and `capture_chart` work normally. The two range
 tools return a clear error straight away, before spending any time in the browser.
 
+To try the range tools without the private rules, point the server at the **toy example
+detector** in [`examples/detector/`](examples/detector/range_screener_v6.py):
+
+```bash
+FUTURES_MCP_DETECTOR_DIR=examples/detector
+```
+
+It meets the same contract with deliberately naive logic: the box is the first day's
+high/low, and 4 alternating edge touches count as complete. Its results are **not** the
+ones shown above. CI uses it to run the range pipeline end to end.
+
 ## Connect it to Claude
 
 ### Claude Code (plugin)
@@ -162,7 +173,7 @@ mypy
   - Re-scanning them must reproduce the recorded structures.
   - Re-drawing them must reproduce the recorded marked charts pixel for pixel.
 - **Protocol tests.** An in-memory `mcp.Client` runs against the real server with only the network edges faked, i.e. the bar feed and the browser. They cover schemas, argument validation, error mapping, progress, images and structured output.
-- **CI** runs on Ubuntu with Python 3.11 and 3.12. Tests that need the private detector are skipped there.
+- **CI** runs on Ubuntu with Python 3.11 and 3.12. Tests that need the private detector are skipped there; the toy detector test still runs the range pipeline.
 
 ## Scope and limits
 
