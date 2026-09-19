@@ -1,0 +1,11 @@
+{
+  "name": "futures-mcp",
+  "owner": { "name": "Usama Hassan", "url": "https://github.com/usamahassan965" },
+  "plugins": [
+    {
+      "name": "futures-mcp",
+      "source": "./plugin/futures-mcp",
+      "description": "Futures bars, TradingView chart capture and range-setup detection as MCP tools."
+    }
+  ]
+}

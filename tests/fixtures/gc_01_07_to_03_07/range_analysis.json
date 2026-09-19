@@ -1,0 +1,12 @@
+{
+ "window": "01_07_to_03_07",
+ "verdict": "NO_RANGE",
+ "calibration": {
+  "px_per_unit": 2.504089506172832,
+  "rms_price_px": 0.2707442873562944,
+  "rms_x_px": 0.2622520359688666,
+  "trustworthy": true
+ },
+ "structures": [],
+ "detector": "range_screener_v6 (rules 1-8 in code); rules 9-11 hand-applied"
+}

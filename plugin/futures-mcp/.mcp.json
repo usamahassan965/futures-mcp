@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "futures": {
+      "command": "${FUTURES_MCP_PYTHON:-python}",
+      "args": ["-m", "futures_mcp"]
+    }
+  }
+}

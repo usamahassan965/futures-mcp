@@ -1,0 +1,81 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "futures-mcp"
+version = "0.1.0"
+description = "MCP server for futures market analysis: TradingView chart capture, OHLCV bars with relative volume, and range-setup detection with annotated charts."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Usama" }]
+keywords = ["mcp", "model-context-protocol", "tradingview", "futures", "claude", "trading"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Topic :: Office/Business :: Financial :: Investment",
+]
+dependencies = [
+  "mcp[cli]>=2.2",
+  "pandas>=2.1",
+  "numpy>=1.26",
+  "playwright>=1.45",
+  "pillow>=10.0",
+  "pytesseract>=0.3.10",
+  "pydantic>=2.6",
+  "pydantic-settings>=2.2",
+  "anyio>=4.3",
+]
+
+[project.optional-dependencies]
+# tvdatafeed is not on PyPI; install it with:
+#   pip install "tvdatafeed @ git+https://github.com/stefanomorni/fork-tvdatafeed.git"
+dev = [
+  "pytest>=8.0",
+  "pytest-asyncio>=0.23",
+  "ruff>=0.5",
+  "mypy>=1.10",
+  "pandas-stubs",
+]
+
+[project.scripts]
+futures-mcp = "futures_mcp.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/futures_mcp"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+  "live: hits TradingView over the network (deselect with -m 'not live')",
+  "detector: needs the private range detector in ./private",
+]
+addopts = "-m 'not live'"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+ignore = ["RUF001", "RUF002", "RUF003"]  # em dash / middle dot in captions are intentional
+
+[tool.ruff.lint.per-file-ignores]
+# Verbatim port of the Trading_bot overlay: kept byte-for-byte in behaviour (golden-tested).
+"src/futures_mcp/ranges/overlay.py" = ["E741", "RUF005", "B905"]
+
+[tool.mypy]
+files = ["src"]
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+# Verbatim overlay port reuses loop variables across types; behaviour is golden-tested.
+module = "futures_mcp.ranges.overlay"
+disable_error_code = ["assignment", "operator"]

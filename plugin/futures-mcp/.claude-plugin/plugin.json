@@ -1,0 +1,10 @@
+{
+  "name": "futures-mcp",
+  "version": "0.1.0",
+  "description": "Futures market tools for Claude: OHLCV bars with relative volume, TradingView chart capture, and range-setup detection drawn on the chart.",
+  "author": { "name": "Usama Hassan", "url": "https://github.com/usamahassan965" },
+  "homepage": "https://github.com/usamahassan965/futures-mcp",
+  "repository": "https://github.com/usamahassan965/futures-mcp",
+  "license": "MIT",
+  "keywords": ["mcp", "futures", "tradingview", "trading"]
+}

@@ -1,0 +1,93 @@
+{
+ "window": "03_07_to_07_07",
+ "verdict": "COMPLETED",
+ "calibration": {
+  "px_per_unit": 5.229090909090996,
+  "rms_price_px": 0.2816715160883682,
+  "rms_x_px": 0.28866171914371985,
+  "trustworthy": true
+ },
+ "structures": [
+  {
+   "S": 4168.45,
+   "R": 4211.2,
+   "verdict": "COMPLETED",
+   "rejections": [
+    {
+     "n": 1,
+     "side": "R",
+     "idx": 1,
+     "price": 4208.3,
+     "time": "2026-07-03 06:00"
+    },
+    {
+     "n": 2,
+     "side": "S",
+     "idx": 14,
+     "price": 4167.7,
+     "time": "2026-07-03 19:00"
+    },
+    {
+     "n": 3,
+     "side": "R",
+     "idx": 18,
+     "price": 4214.1,
+     "time": "2026-07-06 04:00"
+    },
+    {
+     "n": 4,
+     "side": "S",
+     "idx": 23,
+     "price": 4169.2,
+     "time": "2026-07-06 09:00"
+    }
+   ],
+   "discards": [],
+   "caption": "COMPLETED range — 4 rejections  (S 4168.45 / R 4211.2)  · broke 2026-07-06 10:00",
+   "broke": "2026-07-06 10:00",
+   "window_days": 2,
+   "score": 4.44
+  },
+  {
+   "S": 4134.15,
+   "R": 4186.0,
+   "verdict": "COMPLETED",
+   "rejections": [
+    {
+     "n": 1,
+     "side": "S",
+     "idx": 33,
+     "price": 4140.6,
+     "time": "2026-07-06 19:00"
+    },
+    {
+     "n": 2,
+     "side": "R",
+     "idx": 37,
+     "price": 4179.6,
+     "time": "2026-07-06 23:00"
+    },
+    {
+     "n": 3,
+     "side": "S",
+     "idx": 47,
+     "price": 4127.7,
+     "time": "2026-07-07 10:00"
+    },
+    {
+     "n": 4,
+     "side": "R",
+     "idx": 55,
+     "price": 4192.4,
+     "time": "2026-07-07 18:00"
+    }
+   ],
+   "discards": [],
+   "caption": "COMPLETED range — 4 rejections  (S 4134.15 / R 4186.0)",
+   "broke": null,
+   "window_days": 2,
+   "score": 3.81
+  }
+ ],
+ "detector": "range_screener_v6 (rules 1-8 in code); rules 9-11 hand-applied"
+}

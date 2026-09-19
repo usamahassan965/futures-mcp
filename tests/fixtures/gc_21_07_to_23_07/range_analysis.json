@@ -1,0 +1,46 @@
+{
+ "window": "21_07_to_23_07",
+ "verdict": "NOT_COMPLETED",
+ "calibration": {
+  "px_per_unit": 3.5046089800772924,
+  "rms_price_px": 0.31214235158970666,
+  "rms_x_px": 0.2550696723292364,
+  "trustworthy": true
+ },
+ "structures": [
+  {
+   "S": 4048.4,
+   "R": 4090.45,
+   "verdict": "NOT_COMPLETED",
+   "rejections": [
+    {
+     "n": 1,
+     "side": "R",
+     "idx": 6,
+     "price": 4088.4,
+     "time": "2026-07-21 11:00"
+    },
+    {
+     "n": 2,
+     "side": "S",
+     "idx": 13,
+     "price": 4048.4,
+     "time": "2026-07-21 18:00"
+    },
+    {
+     "n": 3,
+     "side": "R",
+     "idx": 18,
+     "price": 4092.5,
+     "time": "2026-07-21 23:00"
+    }
+   ],
+   "discards": [],
+   "caption": "NOT completed — 3 rejections  (S 4048.4 / R 4090.45)  · broke 2026-07-22 05:00",
+   "broke": "2026-07-22 05:00",
+   "window_days": 2,
+   "score": 3.69
+  }
+ ],
+ "detector": "range_screener_v6 (rules 1-8 in code); rules 9-11 hand-applied"
+}
