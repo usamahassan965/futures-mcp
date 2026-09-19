@@ -47,6 +47,7 @@ class RangeChart:
     png: bytes
     path: Path
     drawn: bool
+    mode: str
     warnings: list[str] = field(default_factory=list)
 
 
@@ -55,7 +56,10 @@ class FuturesService:
                  browser: BrowserManager | None = None):
         self.settings = settings
         self.feed = feed or BarFeed(settings.data_dir / "bars", settings.live_cache_ttl)
-        self.browser = browser or BrowserManager(settings)
+        # One browser per capture mode, each started on first use.
+        self._browsers: dict[str, BrowserManager] = {}
+        if browser is not None:
+            self._browsers[browser.mode] = browser
         if settings.tesseract_cmd:
             overlay.set_tesseract_cmd(settings.tesseract_cmd)
         elif not shutil.which("tesseract") and WINDOWS_TESSERACT.exists():
@@ -64,12 +68,25 @@ class FuturesService:
     # ------------------------------------------------------------------ info --
     def status(self) -> dict[str, Any]:
         return {
-            "capture_mode": self.browser.mode,
+            "capture_mode": self.settings.capture_mode,
+            "session_mode_available": self.settings.session_mode,
             "range_detector_installed": detector_available(self.settings.detector_dir),
             "tesseract_found": bool(shutil.which("tesseract") or WINDOWS_TESSERACT.exists()
                                     or self.settings.tesseract_cmd),
             "data_dir": str(self.settings.data_dir.resolve()),
         }
+
+    def browser_for(self, mode: str | None) -> BrowserManager:
+        mode = mode or self.settings.capture_mode
+        if mode not in ("anonymous", "session"):
+            raise ValueError(f"Unknown capture mode {mode!r}: use 'anonymous' or 'session'")
+        if mode == "session" and not self.settings.session_mode:
+            raise ValueError("Session mode needs TRADINGVIEW_SESSION_ID (and TRADINGVIEW_URL "
+                             "for your layout) in ~/.futures-mcp/.env; restart the client "
+                             "after setting it. Use mode='anonymous' meanwhile.")
+        if mode not in self._browsers:
+            self._browsers[mode] = BrowserManager(self.settings, mode)
+        return self._browsers[mode]
 
     # ------------------------------------------------------------------ bars --
     async def bars(self, symbol: str, timeframe: str, days: int, target: date,
@@ -84,10 +101,11 @@ class FuturesService:
 
     # --------------------------------------------------------------- capture --
     async def capture(self, symbol: str, timeframe: str, days: int, target: date,
-                      progress: Progress | None = None) -> Capture:
+                      progress: Progress | None = None, mode: str | None = None) -> Capture:
         inst = resolve(symbol)
-        return await capture_window(self.browser, inst, check_timeframe(timeframe), target,
-                                    _check_days(days), self._dir("captures", inst), progress)
+        return await capture_window(self.browser_for(mode), inst, check_timeframe(timeframe),
+                                    target, _check_days(days), self._dir("captures", inst),
+                                    progress)
 
     # ---------------------------------------------------------------- ranges --
     def _analyze_payload(self, inst: Instrument, payload: dict[str, Any]) -> tuple[
@@ -113,10 +131,12 @@ class FuturesService:
         return report
 
     async def range_chart(self, symbol: str, timeframe: str, days: int, target: date,
-                          progress: Progress | None = None) -> RangeChart:
+                          progress: Progress | None = None,
+                          mode: str | None = None) -> RangeChart:
         inst = resolve(symbol)
         tf = _range_tf(timeframe)
         days = _check_days(days, 2, 10)
+        browser = self.browser_for(mode)
         # Fail fast before spending ~30s in the browser.
         if not detector_available(self.settings.detector_dir):
             pipeline.analyze([], inst.code, self.settings.detector_dir)  # raises a clear error
@@ -134,7 +154,7 @@ class FuturesService:
         try:
             async with anyio.create_task_group() as tg:
                 tg.start_soon(get_bars)
-                shot = await capture_window(self.browser, inst, tf, target, days,
+                shot = await capture_window(browser, inst, tf, target, days,
                                             self._dir("captures", inst), scaled)
         except BaseExceptionGroup as group:
             # Surface the first real failure (the other task was cancelled by it).
@@ -148,7 +168,7 @@ class FuturesService:
         if progress:
             await progress(1.0, "done")
         png = out.read_bytes() if drawn else shot.png
-        return RangeChart(report, png, out if drawn else shot.path, drawn,
+        return RangeChart(report, png, out if drawn else shot.path, drawn, shot.mode,
                           shot.warnings + warnings)
 
     def _mark(self, png: Path, out: Path, bars: list[dict[str, Any]],
@@ -168,7 +188,8 @@ class FuturesService:
         return d
 
     async def aclose(self) -> None:
-        await self.browser.close()
+        for browser in self._browsers.values():
+            await browser.close()
 
 
 def _untrusted(cal: dict[str, Any]) -> str:

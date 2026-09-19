@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -24,6 +25,11 @@ class Settings(BaseSettings):
     #: Chart URL used in session mode, e.g. ``https://www.tradingview.com/chart/<layout-id>/``.
     tradingview_url: str = "https://www.tradingview.com/chart/"
 
+    #: Mode a capture uses when the caller doesn't pick one. Unset = session when a
+    #: cookie is configured, otherwise anonymous.
+    default_mode: Literal["anonymous", "session"] | None = Field(
+        default=None, alias="FUTURES_MCP_DEFAULT_MODE")
+
     #: Where captures, marked charts and the bar cache are written.
     data_dir: Path = Field(default=Path("data"), alias="FUTURES_MCP_DATA_DIR")
     #: Folder holding the (private, un-versioned) range detector module.
@@ -39,6 +45,10 @@ class Settings(BaseSettings):
     @property
     def session_mode(self) -> bool:
         return bool(self.tradingview_session_id.get_secret_value())
+
+    @property
+    def capture_mode(self) -> str:
+        return self.default_mode or ("session" if self.session_mode else "anonymous")
 
 
 @lru_cache(maxsize=1)

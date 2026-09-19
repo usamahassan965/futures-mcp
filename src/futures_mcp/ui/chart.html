@@ -45,7 +45,8 @@
     if (report) {
       head.append(el("span", `chip ${report.verdict}`, report.verdict.replace("_", " ")));
       head.append(el("span", "meta",
-        `${report.symbol} · ${report.timeframe} · ${report.window_trading_days} trading days to ${report.target_date}`));
+        `${report.symbol} · ${report.timeframe} · ${report.window_trading_days} trading days to ${report.target_date}` +
+        (sc.mode ? ` · ${sc.mode} chart` : "")));
     } else if (sc) {
       head.append(el("span", "meta", `TradingView chart · ${sc.mode} mode`));
     }

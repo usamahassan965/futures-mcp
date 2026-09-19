@@ -17,6 +17,7 @@ from typing import Any
 import pytest
 from mcp import Client
 from mcp.types import ImageContent, TextContent
+from pydantic import SecretStr
 
 from futures_mcp import service as service_mod
 from futures_mcp.capture.tradingview import Capture
@@ -63,7 +64,8 @@ def ranged() -> Window:
 
 def make_service(tmp_path: Path, window: Window, detector_dir: Path = DETECTOR_DIR,
                  monkeypatch: pytest.MonkeyPatch | None = None) -> FuturesService:
-    settings = Settings(FUTURES_MCP_DATA_DIR=tmp_path, FUTURES_MCP_DETECTOR_DIR=detector_dir)
+    settings = Settings(FUTURES_MCP_DATA_DIR=tmp_path, FUTURES_MCP_DETECTOR_DIR=detector_dir,
+                        tradingview_session_id=SecretStr(""), FUTURES_MCP_DEFAULT_MODE=None)
     svc = FuturesService(settings, feed=FakeFeed(window), browser=FakeBrowser())  # type: ignore[arg-type]
     if monkeypatch is not None:
         async def fake_capture(browser: Any, inst: Instrument, tf: str, target: date, days: int,
@@ -141,7 +143,8 @@ async def test_capture_chart_returns_image(tmp_path: Path, ranged: Window,
         progress.append((p, message))
 
     async with Client(build_server(svc)) as client:
-        result = await client.call_tool("capture_chart", {"end_date": "2026-07-07"},
+        result = await client.call_tool("capture_chart",
+                                        {"end_date": "2026-07-07", "mode": "anonymous"},
                                         progress_callback=on_progress)
     assert not result.is_error
     image = result.content[0]
@@ -149,6 +152,18 @@ async def test_capture_chart_returns_image(tmp_path: Path, ranged: Window,
     assert base64.b64decode(image.data) == ranged.png.read_bytes()
     assert result.structured_content and result.structured_content["mode"] == "anonymous"
     assert progress == [(50, "fake capture")]
+
+
+async def test_session_mode_without_cookie_is_a_tool_error(tmp_path: Path, ranged: Window,
+                                                           monkeypatch: pytest.MonkeyPatch) -> None:
+    svc = make_service(tmp_path, ranged, monkeypatch=monkeypatch)
+    async with Client(build_server(svc)) as client:
+        for tool in ("capture_chart", "get_range_chart"):
+            result = await client.call_tool(tool, {"end_date": "2026-07-07", "mode": "session"})
+            assert result.is_error
+            assert isinstance(result.content[0], TextContent)
+            assert "TRADINGVIEW_SESSION_ID" in result.content[0].text
+    assert svc.feed.calls == 0  # type: ignore[attr-defined]
 
 
 @needs_detector
@@ -192,6 +207,7 @@ async def test_resources_and_prompt(tmp_path: Path, ranged: Window) -> None:
         prompt = await client.get_prompt("range_check", {"symbol": "GC1!"})
     assert '"COMEX:GC1!"' in symbols.contents[0].text  # type: ignore[union-attr]
     assert '"capture_mode": "anonymous"' in status.contents[0].text  # type: ignore[union-attr]
+    assert '"session_mode_available": false' in status.contents[0].text  # type: ignore[union-attr]
     text = prompt.messages[0].content
     assert isinstance(text, TextContent) and "analyze_range" in text.text
 

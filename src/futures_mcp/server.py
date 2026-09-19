@@ -58,6 +58,13 @@ CHART_VIEW_URI = "ui://futures-mcp/chart.html"
 CHART_VIEW_MIME = "text/html;profile=mcp-app"
 CHART_VIEW = {"ui": {"resourceUri": CHART_VIEW_URI}, "ui/resourceUri": CHART_VIEW_URI}
 
+Mode = Annotated[
+    Literal["anonymous", "session"] | None,
+    Field(description="Chart to capture on: 'anonymous' (TradingView's public chart) or "
+                      "'session' (the user's saved layout, e.g. when they say 'on my "
+                      "layout'). Omit for the server default."),
+]
+
 READ_ONLY = ToolAnnotations(read_only_hint=True, open_world_hint=True, idempotent_hint=True)
 
 # Failures a caller can act on: their message is passed through as the tool error.
@@ -75,6 +82,7 @@ class RangeChartResult(BaseModel):
     report: RangeReport
     path: str
     drawn: bool = Field(description="False when chart calibration failed and nothing was drawn")
+    mode: str = Field(description="anonymous (default chart) or session (your saved layout)")
     warnings: list[str]
 
 
@@ -144,13 +152,14 @@ def build_server(service: FuturesService | None = None) -> MCPServer:
         timeframe: Timeframe = "H1",
         days: Annotated[int, Field(ge=1, le=30, description="Trading days in the window")] = 4,
         end_date: EndDate = None,
+        mode: Mode = None,
         ctx: Context | None = None,
     ) -> Annotated[CallToolResult, ChartResult]:
         """Screenshot of the TradingView chart framed on exactly the trading-day window.
         Takes 20-40 seconds."""
         with _tool_errors():
             shot = await svc.capture(symbol, timeframe, days, parse_date(end_date),
-                                     _progress(ctx))
+                                     _progress(ctx), mode)
         return _image_result(shot.png, ChartResult(
             path=str(shot.path), mode=shot.mode,
             window_utc=[t.isoformat() for t in shot.window_utc], warnings=shot.warnings))
@@ -175,6 +184,7 @@ def build_server(service: FuturesService | None = None) -> MCPServer:
         timeframe: RangeTimeframe = "H1",
         days: Annotated[int, Field(ge=2, le=10, description="Trading days to scan")] = 3,
         end_date: EndDate = None,
+        mode: Mode = None,
         ctx: Context | None = None,
     ) -> Annotated[CallToolResult, RangeChartResult]:
         """The TradingView chart for the window with the detected range drawn on it
@@ -182,9 +192,9 @@ def build_server(service: FuturesService | None = None) -> MCPServer:
         Takes 30-50 seconds."""
         with _tool_errors():
             chart = await svc.range_chart(symbol, timeframe, days, parse_date(end_date),
-                                          _progress(ctx))
+                                          _progress(ctx), mode)
         return _image_result(chart.png, RangeChartResult(
-            report=chart.report, path=str(chart.path), drawn=chart.drawn,
+            report=chart.report, path=str(chart.path), drawn=chart.drawn, mode=chart.mode,
             warnings=chart.warnings))
 
     @mcp.resource("futures://symbols", name="symbols", mime_type="application/json",

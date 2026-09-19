@@ -32,8 +32,9 @@ class CaptureError(RuntimeError):
 
 
 class BrowserManager:
-    def __init__(self, settings: Settings):
+    def __init__(self, settings: Settings, mode: str = "anonymous"):
         self.settings = settings
+        self._mode = mode
         self._lock = asyncio.Lock()
         self._pw: Any = None
         self._browser: Any = None
@@ -41,10 +42,10 @@ class BrowserManager:
 
     @property
     def mode(self) -> str:
-        return "session" if self.settings.session_mode else "anonymous"
+        return self._mode
 
     def start_url(self, tv_symbol: str, interval: str) -> str:
-        if self.settings.session_mode:
+        if self._mode == "session":
             return self.settings.tradingview_url
         return ANON_CHART.format(symbol=quote(tv_symbol, safe=""), interval=interval)
 
@@ -63,7 +64,7 @@ class BrowserManager:
             ) from exc
         context = await self._browser.new_context(viewport=VIEWPORT, user_agent=USER_AGENT)
         sid = self.settings.tradingview_session_id.get_secret_value()
-        if sid:
+        if self._mode == "session" and sid:
             await context.add_cookies([{
                 "name": "sessionid", "value": sid, "domain": ".tradingview.com", "path": "/",
                 "httpOnly": True, "secure": True, "sameSite": "Lax",

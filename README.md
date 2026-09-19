@@ -82,6 +82,8 @@ Copy `.env.example` to `.env` if you want to change anything. All settings are o
 - **Anonymous (default).** TradingView's public chart. No account needed.
 - **Session.** Set `TRADINGVIEW_SESSION_ID` (your `sessionid` cookie) and `TRADINGVIEW_URL` (your saved layout). Captures then use your own layout, indicators and colours. Keep the cookie in `.env`, which is git-ignored.
 
+Each chart request can also pick its mode: `capture_chart` and `get_range_chart` take an optional `mode` (`anonymous` or `session`), so *"show it on my layout"* uses your layout for that one request. When a request doesn't pick one, the server uses `FUTURES_MCP_DEFAULT_MODE`. If that's unset, it uses session when a cookie is set and anonymous otherwise. Set `FUTURES_MCP_DEFAULT_MODE=anonymous` to keep the public chart as the default while your layout is available on request.
+
 ### The range detector is private
 
 The detection rules are proprietary and are **not** in this repository. At runtime the
