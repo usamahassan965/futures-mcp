@@ -89,6 +89,7 @@ class TradeTarget(BaseModel):
 class Account(BaseModel):
     equity: float
     risk_pct: float = Field(description="Percent of equity risked per trade")
+    contract: str = Field(description="Contract the position is sized in, e.g. MGC")
     point_value: float = Field(description="Account currency per 1.00 point, one contract")
     min_contracts: int
     targets: list[float]

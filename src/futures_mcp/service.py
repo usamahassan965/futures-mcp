@@ -154,9 +154,11 @@ class FuturesService:
 
     # ------------------------------------------------------------- trade plan --
     def _account(self, inst: Instrument) -> dict[str, Any]:
+        contract = inst.contract(self.settings.contract)
         return {"equity": self.settings.account_equity, "risk_pct": self.settings.risk_pct,
-                "point_value": inst.point_value, "min_contracts": 1,
-                "targets": list(self.settings.targets), "symbol": inst.symbol}
+                "contract": contract.code, "point_value": contract.point_value,
+                "min_contracts": 1, "targets": list(self.settings.targets),
+                "symbol": inst.symbol}
 
     def _plan_payload(self, inst: Instrument, payload: dict[str, Any]) -> TradePlanReport:
         report, structures = self._analyze_payload(inst, payload)
@@ -193,7 +195,8 @@ class FuturesService:
         account = self._account(inst)
         detected = backtest.detect_signals(history, inst, start, end,
                                            self.settings.detector_dir, mod, account, days, tick)
-        runs = [backtest.run(detected, mod, x, inst.point_value, days) for x in BACKTEST_EXITS]
+        runs = [backtest.run(detected, mod, x, account["point_value"], days)
+                for x in BACKTEST_EXITS]
         return BacktestReport.model_validate({
             "symbol": inst.symbol, "timeframe": "H1", "start": str(start), "end": str(end),
             "window_trading_days": days, "rules_version": str(mod.RULES_VERSION),
@@ -208,6 +211,8 @@ class FuturesService:
                 "A bar that touches both the stop and the target counts as the stop.",
                 "One trade at a time; one signal per range.",
                 "Continuous contract: roll gaps are flagged, not adjusted.",
+                f"Levels come from {inst.symbol}; positions are sized in {account['contract']} "
+                f"at ${account['point_value']:g} per point.",
             ],
         })
 

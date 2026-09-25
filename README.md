@@ -128,7 +128,10 @@ any of those is an error, not a trade. **No level or size in the output is ever 
 language model** — the tool computes them and the model may only report them.
 
 Sizing comes from the account settings: `FUTURES_MCP_ACCOUNT_EQUITY` (default 100000),
-`FUTURES_MCP_RISK_PCT` (default 1) and the instrument's point value.
+`FUTURES_MCP_RISK_PCT` (default 1) and `FUTURES_MCP_CONTRACT`. Levels are always read
+on the continuous future (GC1!), but positions are sized in the micro contract by default
+(MGC, $10 per point), which gets much closer to the risk budget than one standard GC
+($100 per point). Set `FUTURES_MCP_CONTRACT=standard` to size in GC.
 
 A toy set of rules lives in [`examples/rules/`](examples/rules/entry_rules.py) — last
 rejection, market entry at its close, stop at that bar's extreme — so the tool can be run

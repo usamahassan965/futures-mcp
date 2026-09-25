@@ -231,7 +231,8 @@ async def test_trade_plan_runs_on_the_toy_rules(tmp_path: Path, ranged: Window) 
     out = result.structured_content
     assert out is not None
     assert out["rules_version"] == "example-toy-v1"
-    assert out["account"] == {"equity": 100000.0, "risk_pct": 1.0, "point_value": 100.0,
+    assert out["account"] == {"equity": 100000.0, "risk_pct": 1.0, "contract": "MGC",
+                              "point_value": 10.0,
                               "min_contracts": 1, "targets": [1.0, 2.0, 3.0]}
     assert len(out["plans"]) == len(out["range_report"]["structures"])
     for plan, structure in zip(out["plans"], out["range_report"]["structures"], strict=True):

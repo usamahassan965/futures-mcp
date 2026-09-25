@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     account_equity: float = Field(default=100_000.0, alias="FUTURES_MCP_ACCOUNT_EQUITY")
     #: Percent of equity risked per trade.
     risk_pct: float = Field(default=1.0, alias="FUTURES_MCP_RISK_PCT")
+    #: Contract positions are sized in: the micro (e.g. MGC, $10/pt) sizes close to the
+    #: risk budget; the standard (GC, $100/pt) often cannot.
+    contract: Literal["standard", "micro"] = Field(default="micro", alias="FUTURES_MCP_CONTRACT")
     #: Reward multiples of the risk distance the planner quotes as targets.
     targets: tuple[float, ...] = (1.0, 2.0, 3.0)
 

@@ -17,8 +17,9 @@ Contract the module must satisfy::
 ``structure`` is one entry of ``pipeline.analyze(...)["structures"]`` (``S``,
 ``R``, ``verdict``, ``broke`` and ``rejections`` with
 ``n``/``side``/``idx``/``price``/``time``) plus the detector's own measurements
-under ``"detector"``, and ``account`` carries ``equity``, ``risk_pct``,
-``point_value``, ``min_contracts`` and the target ``targets`` R multiples.
+under ``"detector"``, and ``account`` carries ``equity``, ``risk_pct``, the
+``contract`` sized in and its ``point_value``, ``min_contracts`` and the target
+``targets`` R multiples.
 
 The returned dict is either ``{"signal": False, "reason": ...}`` or a plan with
 ``direction``, ``order``, ``entry``, ``stop``, ``risk_points``, ``contracts``,

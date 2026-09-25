@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 
 from futures_mcp.ranges import pipeline
+from futures_mcp.symbols import resolve
 from futures_mcp.trading.rules import (
     RulesOutputError,
     RulesUnavailableError,
@@ -27,6 +28,14 @@ GOOD: dict[str, Any] = {
     "contracts": 2, "targets": [{"r_multiple": 1.0, "price": 90.0},
                                 {"r_multiple": 2.0, "price": 80.0}],
 }
+
+
+def test_positions_size_in_the_micro_or_the_standard_contract() -> None:
+    gc = resolve("GC1!")
+    assert (gc.contract("micro").code, gc.contract("micro").point_value) == ("MGC", 10.0)
+    assert (gc.contract("standard").code, gc.contract("standard").point_value) == ("GC", 100.0)
+    with pytest.raises(ValueError, match="standard"):
+        gc.contract("mini")
 
 
 def test_missing_rules_are_a_clear_error(tmp_path: Path) -> None:
