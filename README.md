@@ -28,6 +28,7 @@ prices and bars.
 | `analyze_range` | Verdict `COMPLETED` / `NOT_COMPLETED` / `NO_RANGE`, with each structure's support, resistance, rejections and break time | 2–5 s |
 | `get_range_chart` | The chart with the detected range drawn on it, plus the same report | 30–50 s |
 | `get_trade_plan` | For each detected range: direction, entry order and level, stop and what it is anchored to, R-multiple targets, position size and the exit rules | 2–5 s |
+| `run_backtest` | Walk-forward replay of the detector and the rules over past dates: every order, fill and exit, with win rate, R, P&L, drawdown and profit factor for the strategy's own exit and for 1R/2R/3R | ~1 min per month |
 
 Also:
 
@@ -50,6 +51,9 @@ flowchart LR
     P --> D[(private detector<br/>not in repo)]
     SV --> R[trading/rules.py<br/>loader + arithmetic guard]
     R --> E[(private trade rules<br/>not in repo)]
+    SV --> BT[trading/backtest.py<br/>walk-forward replay]
+    BT --> P
+    BT --> R
     SV --> O[ranges/overlay.py<br/>OCR calibration + drawing]
     B --> TV1((TradingView<br/>data))
     T --> TV2((TradingView<br/>chart))
@@ -114,7 +118,8 @@ ones shown above. CI uses it to run the range pipeline end to end.
 rules that answer it are private in the same way. At runtime the server imports
 `entry_rules.py` from `FUTURES_MCP_RULES_DIR` (default: the detector folder). The contract
 is documented in [`trading/rules.py`](src/futures_mcp/trading/rules.py): a module exposing
-`RULES_VERSION` and `plan(bars, structure, account)`.
+`RULES_VERSION` and `plan(bars, structure, account)`, and optionally
+`simulate(bars, plan, structure, placed_idx, exit)` for backtests.
 
 Whatever the rules return, the server re-checks before it leaves the process: the stop must
 be on the correct side of the entry, `risk_points` must equal `|entry − stop|`, every target
@@ -134,6 +139,26 @@ FUTURES_MCP_DETECTOR_DIR=examples/detector FUTURES_MCP_RULES_DIR=examples/rules
 ```
 
 It is wiring, not a strategy. CI uses it the same way it uses the toy detector.
+
+### Backtesting
+
+`run_backtest` answers *would this have worked?* without hindsight. At every H1 bar in the
+period, [`trading/backtest.py`](src/futures_mcp/trading/backtest.py) cuts the window the live
+tool would have seen at that moment, runs the detector and the rules on it, and places an order
+only on the bar where the signal first appears. The rules' own `simulate` then replays that
+order on the bars that follow. The backtest module decides nothing about fills or exits; it
+schedules signals, enforces the portfolio constraints and counts:
+
+- **One signal per range.** The sliding window renumbers the same range as it moves, so later
+  signals on an overlapping range are ignored.
+- **One trade at a time.** A signal is skipped while an order rests or a trade is open.
+- **Stale signals are counted, not traded.** Sometimes a detector recognises a structure only
+  after the order would already have filled or been cancelled.
+- **Worst case on ambiguous bars.** A bar that touches both the stop and the target counts as
+  the stop, and is flagged.
+- **Roll gaps are flagged.** Continuous contracts jump at a roll; trades spanning one are marked.
+
+No commissions or slippage are modelled yet.
 
 ## Connect it to Claude
 
@@ -215,6 +240,8 @@ mypy
 - Position sizing assumes one account and one instrument's point value; it does not know
   your broker, margin or fees.
 - Timeframes: bars and charts on H1/H4; range detection on H1, where it is calibrated.
+- Backtests are limited by how much H1 history TradingView returns (about six months) and
+  to 120 calendar days per run. They exclude costs.
 - Times are shown in UTC+5 (the chart axis) and UTC.
 - Not financial advice. This is an analysis tool.
 

@@ -53,6 +53,7 @@ def test_validate_accepts_a_consistent_plan() -> None:
     ({"targets": [{"r_multiple": 1.0, "price": 91.0}]}, "is not"),
     ({"contracts": 0}, "below the minimum"),
     ({"entry": None}, "missing entry"),
+    ({"take_profit": 105.0}, "not on the profit side"),
 ])
 def test_validate_rejects_bad_arithmetic(patch: dict[str, Any], message: str) -> None:
     with pytest.raises(RulesOutputError, match=message):

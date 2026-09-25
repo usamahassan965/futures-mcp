@@ -14,6 +14,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
 import pytest
 from mcp import Client
 from mcp.types import ImageContent, TextContent
@@ -38,9 +39,10 @@ from .conftest import (
     needs_rules,
     needs_tesseract,
 )
+from .test_backtest import history_of
 
 TOOLS = {"get_futures_bars", "capture_chart", "analyze_range", "get_range_chart",
-         "get_trade_plan"}
+         "get_trade_plan", "run_backtest"}
 
 
 class FakeFeed:
@@ -59,6 +61,9 @@ class FakeFeed:
             "n_bars": len(bars), "window_max_volume_bar": max(bars, key=lambda b: b["volume"]),
             "days": [], "bars": bars,
         }
+
+    def history(self, inst: Instrument, tf: str) -> pd.DataFrame:
+        return history_of(self.w)
 
 
 class FakeBrowser:
@@ -187,6 +192,35 @@ async def test_missing_rules_fail_fast(tmp_path: Path, ranged: Window) -> None:
     assert isinstance(result.content[0], TextContent)
     assert "FUTURES_MCP_RULES_DIR" in result.content[0].text
     assert svc.feed.calls == 0  # type: ignore[attr-defined]
+
+
+async def test_run_backtest_on_the_toy_rules(tmp_path: Path, ranged: Window) -> None:
+    svc = make_service(tmp_path, ranged, detector_dir=EXAMPLE_DETECTOR, rules_dir=EXAMPLE_RULES)
+    async with Client(build_server(svc)) as client:
+        result = await client.call_tool("run_backtest", {
+            "start_date": "2026-07-06", "end_date": "2026-07-07", "days": 2})
+    assert not result.is_error, result.content
+    out = result.structured_content
+    assert out is not None
+    assert out["rules_version"] == "example-toy-v1"
+    assert [r["exit"] for r in out["runs"]] == ["tp", "1R", "2R", "3R"]
+    assert out["steps"] > 0 and out["signals"] > 0
+    for run in out["runs"]:
+        assert run["stats"]["orders"] == len(run["trades"])
+        assert len(run["trades"]) + sum(run["skipped"].values()) == out["signals"]
+
+
+async def test_run_backtest_needs_enough_history(tmp_path: Path, ranged: Window) -> None:
+    svc = make_service(tmp_path, ranged, detector_dir=EXAMPLE_DETECTOR, rules_dir=EXAMPLE_RULES)
+    async with Client(build_server(svc)) as client:
+        result = await client.call_tool("run_backtest", {
+            "start_date": "2026-07-03", "end_date": "2026-07-07", "days": 3})
+        backwards = await client.call_tool("run_backtest", {
+            "start_date": "2026-07-07", "end_date": "2026-07-03"})
+    assert result.is_error
+    assert isinstance(result.content[0], TextContent)
+    assert "only reaches back" in result.content[0].text
+    assert backwards.is_error
 
 
 async def test_trade_plan_runs_on_the_toy_rules(tmp_path: Path, ranged: Window) -> None:

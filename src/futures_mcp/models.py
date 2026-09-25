@@ -115,6 +115,10 @@ class TradePlan(BaseModel):
     risk_dollars: float | None = None
     risk_pct_actual: float | None = Field(
         default=None, description="Risk of the sized position, which can exceed risk_pct")
+    take_profit: float | None = Field(
+        default=None, description="The strategy's own exit level, when it is not an R multiple")
+    take_profit_basis: str | None = None
+    take_profit_r: float | None = Field(default=None, description="Take profit in R")
     targets: list[TradeTarget] = []
     signal_rejection: int | None = Field(default=None, description="Rejection that armed it")
     confirm_time: str | None = Field(default=None, description="UTC+5 chart time")
@@ -145,3 +149,72 @@ class TradePlanReport(BaseModel):
     rules_version: str = Field(description="Version string of the loaded trading rules")
     account: Account
     plans: list[TradePlan] = Field(description="One per detected structure, in the same order")
+
+
+class BacktestTrade(BaseModel):
+    detected_utc: str = Field(description="Bar at which the detector first saw the signal")
+    confirm_utc: str
+    direction: Literal["long", "short"]
+    S: float
+    R: float
+    entry: float
+    stop: float
+    target: float | None = Field(description="The exit level simulated in this run")
+    risk_points: float
+    contracts: int
+    status: Literal["cancelled", "closed", "open"]
+    cancel_reason: str | None
+    ambiguous: bool = Field(description="A bar touched both stop and target; counted as the stop")
+    fill_utc: str | None = None
+    fill_price: float | None = None
+    exit_utc: str | None = None
+    exit_price: float | None = None
+    exit_reason: str | None = None
+    r: float | None = Field(description="Result in multiples of the planned risk")
+    pnl: float | None = Field(description="Account currency, no costs")
+    held_bars: int | None = None
+    roll_gap_inside: bool | None = Field(
+        default=None, description="A likely contract-roll gap fell inside the trade")
+
+
+class BacktestStats(BaseModel):
+    orders: int
+    cancelled: dict[str, int]
+    filled: int
+    closed: int
+    still_open: int
+    wins: int
+    losses: int
+    win_rate: float | None
+    avg_r: float | None
+    total_r: float
+    total_pnl: float
+    max_drawdown: float
+    profit_factor: float | None
+    exit_reasons: dict[str, int]
+    ambiguous_bars: int
+    roll_gap_trades: int
+
+
+class BacktestRun(BaseModel):
+    exit: str = Field(description="'tp' (the strategy's own take profit) or an R multiple")
+    stats: BacktestStats
+    skipped: dict[str, int] = Field(description="Signals not traded, by reason")
+    trades: list[BacktestTrade]
+
+
+class BacktestReport(BaseModel):
+    symbol: str
+    timeframe: str
+    start: str
+    end: str
+    window_trading_days: int
+    rules_version: str
+    account: Account
+    steps: int = Field(description="Bars at which the detector was re-run")
+    signals: int = Field(description="Unique signals the rules armed")
+    stale_signals: int = Field(
+        description="Signals whose order had already filled or been cancelled when detected")
+    roll_gaps: list[str] = Field(description="Bars that opened far from the previous close")
+    runs: list[BacktestRun]
+    notes: list[str]

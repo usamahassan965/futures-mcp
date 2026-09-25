@@ -24,7 +24,7 @@ from .capture.browser import CaptureError
 from .config import get_settings
 from .data.bars import DataUnavailableError
 from .data.timewindow import parse_date
-from .models import BarsResult, RangeReport, TradePlanReport
+from .models import BacktestReport, BarsResult, RangeReport, TradePlanReport
 from .ranges.detector import DetectorUnavailableError
 from .service import FuturesService
 from .symbols import REGISTRY
@@ -42,6 +42,8 @@ Futures market tools backed by TradingView.
 - get_range_chart: the screenshot with the detected range drawn on it.
 - get_trade_plan: turns a detected range into a trade: direction, entry order,
   stop, targets and position size, from the operator's own rules.
+- run_backtest: replays the detector and the rules bar by bar over past dates,
+  with no hindsight, and reports every trade and the statistics per exit.
 
 Windows count N trading days ending on end_date (default: the current trading
 day). Chart times are UTC+5, the TradingView axis the charts use. Captures take
@@ -216,6 +218,23 @@ def build_server(service: FuturesService | None = None) -> MCPServer:
         Analysis only, not advice."""
         with _tool_errors():
             return await svc.trade_plan(symbol, timeframe, days, parse_date(end_date))
+
+    @mcp.tool(title="Backtest the trading rules", annotations=READ_ONLY)
+    async def run_backtest(
+        start_date: Annotated[str, Field(description="First day to trade, YYYY-MM-DD")],
+        end_date: Annotated[str, Field(description="Last day to trade, YYYY-MM-DD")],
+        symbol: Symbol = "GC1!",
+        days: Annotated[int, Field(ge=2, le=10, description="Trading days the detector sees")] = 3,
+        ctx: Context | None = None,
+    ) -> BacktestReport:
+        """Walk-forward backtest: at every H1 bar the detector sees only the last `days`
+        trading days, the rules decide whether to place an order, and the order is
+        replayed on the bars that follow. Reports one run per exit (the strategy's take
+        profit, 1R, 2R, 3R) with every trade and its statistics. Takes about a minute
+        per month of bars. Quote the numbers as returned; results exclude costs."""
+        with _tool_errors():
+            return await svc.backtest(symbol, parse_date(start_date), parse_date(end_date),
+                                      days, _progress(ctx))
 
     @mcp.resource("futures://symbols", name="symbols", mime_type="application/json",
                   description="Symbols the tools accept")

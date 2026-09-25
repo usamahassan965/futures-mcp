@@ -8,7 +8,8 @@ same interface (see ``futures_mcp/trading/rules.py``) with deliberately naive lo
   at resistance, long if at support;
 * the entry is that bar's close, with no confirmation and no resting order;
 * the stop is that same bar's own extreme;
-* targets are fixed R multiples and the size is whatever the risk budget buys.
+* targets are fixed R multiples and the size is whatever the risk budget buys;
+* ``simulate`` walks forward until the stop or the target trades, nothing else.
 
 Try it:  FUTURES_MCP_RULES_DIR=examples/rules
 """
@@ -76,3 +77,29 @@ def plan(bars: list[dict[str, Any]], structure: dict[str, Any],
         "triggered_time": str(last["time"]),
         "notes": ["Toy rules: for wiring and tests only, not a strategy."],
     }
+
+
+def simulate(bars: list[dict[str, Any]], plan: dict[str, Any], structure: dict[str, Any],
+             placed_idx: int, exit: str | float = "tp") -> dict[str, Any]:
+    """Toy replay: filled at the entry on the next bar; out at the stop or the target."""
+    short = plan["direction"] == "short"
+    entry, stop, risk = float(plan["entry"]), float(plan["stop"]), float(plan["risk_points"])
+    multiple = float(plan["targets"][0]["r_multiple"]) if exit == "tp" else float(exit)
+    target = entry + (-1.0 if short else 1.0) * risk * multiple
+    res: dict[str, Any] = {"status": "open", "cancel_reason": None, "cancel_idx": None,
+                           "fill_idx": None, "fill_price": None, "exit_idx": None,
+                           "exit_price": None, "exit_reason": None, "ambiguous": False,
+                           "target": target}
+    if placed_idx + 1 >= len(bars):
+        return res
+    res.update(fill_idx=placed_idx + 1, fill_price=entry)
+    for j in range(placed_idx + 1, len(bars)):
+        b = bars[j]
+        hit_stop = b["high"] >= stop if short else b["low"] <= stop
+        hit_tgt = b["low"] <= target if short else b["high"] >= target
+        if hit_stop or hit_tgt:
+            res.update(status="closed", exit_idx=j, ambiguous=hit_stop and hit_tgt,
+                       exit_price=stop if hit_stop else target,
+                       exit_reason="stop" if hit_stop else "target")
+            break
+    return res

@@ -17,8 +17,10 @@ from .capture.browser import BrowserManager
 from .capture.tradingview import Capture, Progress, capture_window
 from .config import Settings
 from .data.bars import BarFeed, check_timeframe
+from .data.timewindow import window_utc
 from .models import (
     Account,
+    BacktestReport,
     BarsResult,
     RangeReport,
     RangeStructure,
@@ -29,11 +31,19 @@ from .models import (
 from .ranges import overlay, pipeline
 from .ranges.detector import detector_available
 from .symbols import Instrument, resolve
-from .trading.rules import build_plan, load_rules, rules_available
+from .trading import backtest
+from .trading.rules import (
+    RulesUnavailableError,
+    build_plan,
+    load_rules,
+    rules_available,
+)
 
 logger = logging.getLogger(__name__)
 
 RANGE_TIMEFRAMES = ("H1",)
+BACKTEST_MAX_DAYS = 120
+BACKTEST_EXITS: tuple[str | float, ...] = ("tp", 1.0, 2.0, 3.0)
 WINDOWS_TESSERACT = Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe")
 
 
@@ -131,7 +141,9 @@ class FuturesService:
             structures=[_structure(s) for s in result["structures"]],
             candidates={k: len(v) for k, v in result["raw"].items()},
         )
-        return report, result["structures"]
+        # The rules measure against what the detector measured, not the drawn box.
+        return report, [s | {"detector": c}
+                        for s, c in zip(result["structures"], result["context"], strict=True)]
 
     async def analyze(self, symbol: str, timeframe: str, days: int, target: date) -> RangeReport:
         inst = resolve(symbol)
@@ -167,6 +179,54 @@ class FuturesService:
         load_rules(self.settings.trading_rules_dir)
         payload = await self.feed.awindow(inst, tf, target, days)
         return await anyio.to_thread.run_sync(self._plan_payload, inst, payload)
+
+    # --------------------------------------------------------------- backtest --
+    def _backtest(self, inst: Instrument, start: date, end: date, days: int,
+                  tick: backtest.Progress | None) -> BacktestReport:
+        mod = load_rules(self.settings.trading_rules_dir)
+        history = self.feed.history(inst, "H1")
+        # The first bar traded needs a full detector window behind it.
+        need = window_utc(start, days)[0]
+        if history.index[0] > need:
+            raise ValueError(f"H1 history only reaches back to {history.index[0]:%Y-%m-%d}; a "
+                             f"{days}-day window from {start} needs bars from {need:%Y-%m-%d}.")
+        account = self._account(inst)
+        detected = backtest.detect_signals(history, inst, start, end,
+                                           self.settings.detector_dir, mod, account, days, tick)
+        runs = [backtest.run(detected, mod, x, inst.point_value, days) for x in BACKTEST_EXITS]
+        return BacktestReport.model_validate({
+            "symbol": inst.symbol, "timeframe": "H1", "start": str(start), "end": str(end),
+            "window_trading_days": days, "rules_version": str(mod.RULES_VERSION),
+            "account": account, "steps": detected["steps"],
+            "signals": len(detected["signals"]),
+            "stale_signals": sum(1 for sig in detected["signals"] if sig["stale"]),
+            "roll_gaps": runs[0]["roll_gaps"],
+            "runs": [r | {"exit": x if x == "tp" else f"{x:g}R"}
+                     for r, x in zip(runs, BACKTEST_EXITS, strict=True)],
+            "notes": [
+                "No commissions or slippage are modelled.",
+                "A bar that touches both the stop and the target counts as the stop.",
+                "One trade at a time; one signal per range.",
+                "Continuous contract: roll gaps are flagged, not adjusted.",
+            ],
+        })
+
+    async def backtest(self, symbol: str, start: date, end: date, days: int = 3,
+                       progress: Progress | None = None) -> BacktestReport:
+        inst = resolve(symbol)
+        days = _check_days(days, 2, 10)
+        if end < start:
+            raise ValueError(f"end {end} is before start {start}.")
+        if (end - start).days > BACKTEST_MAX_DAYS:
+            raise ValueError(f"Backtests are limited to {BACKTEST_MAX_DAYS} calendar days.")
+        # Fail fast, before the history fetch, when the rules cannot replay orders.
+        if not hasattr(load_rules(self.settings.trading_rules_dir), "simulate"):
+            raise RulesUnavailableError("The trading rules have no simulate(); cannot backtest.")
+        tick = _thread_progress(progress) if progress else None
+        out = await anyio.to_thread.run_sync(self._backtest, inst, start, end, days, tick)
+        if progress:
+            await progress(1.0, "done")
+        return out
 
     async def range_chart(self, symbol: str, timeframe: str, days: int, target: date,
                           progress: Progress | None = None,
@@ -228,6 +288,17 @@ class FuturesService:
     async def aclose(self) -> None:
         for browser in self._browsers.values():
             await browser.close()
+
+
+def _thread_progress(progress: Progress) -> backtest.Progress:
+    """Report a worker thread's step counter to the async progress callback, ~20 times."""
+    async def send(p: float, message: str) -> None:
+        await progress(p, message)
+
+    def tick(k: int, n: int) -> None:
+        if n and (k == n or k % max(1, n // 20) == 0):
+            anyio.from_thread.run(send, 0.95 * k / n, f"replayed {k} of {n} bars")
+    return tick
 
 
 def _untrusted(cal: dict[str, Any]) -> str:
