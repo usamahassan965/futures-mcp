@@ -17,10 +17,19 @@ from .capture.browser import BrowserManager
 from .capture.tradingview import Capture, Progress, capture_window
 from .config import Settings
 from .data.bars import BarFeed, check_timeframe
-from .models import BarsResult, RangeReport, RangeStructure, Rejection
+from .models import (
+    Account,
+    BarsResult,
+    RangeReport,
+    RangeStructure,
+    Rejection,
+    TradePlan,
+    TradePlanReport,
+)
 from .ranges import overlay, pipeline
 from .ranges.detector import detector_available
 from .symbols import Instrument, resolve
+from .trading.rules import build_plan, load_rules, rules_available
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +80,7 @@ class FuturesService:
             "capture_mode": self.settings.capture_mode,
             "session_mode_available": self.settings.session_mode,
             "range_detector_installed": detector_available(self.settings.detector_dir),
+            "trading_rules_installed": rules_available(self.settings.trading_rules_dir),
             "tesseract_found": bool(shutil.which("tesseract") or WINDOWS_TESSERACT.exists()
                                     or self.settings.tesseract_cmd),
             "data_dir": str(self.settings.data_dir.resolve()),
@@ -129,6 +139,34 @@ class FuturesService:
         payload = await self.feed.awindow(inst, tf, target, _check_days(days, 2, 10))
         report, _ = await anyio.to_thread.run_sync(self._analyze_payload, inst, payload)
         return report
+
+    # ------------------------------------------------------------- trade plan --
+    def _account(self, inst: Instrument) -> dict[str, Any]:
+        return {"equity": self.settings.account_equity, "risk_pct": self.settings.risk_pct,
+                "point_value": inst.point_value, "min_contracts": 1,
+                "targets": list(self.settings.targets), "symbol": inst.symbol}
+
+    def _plan_payload(self, inst: Instrument, payload: dict[str, Any]) -> TradePlanReport:
+        report, structures = self._analyze_payload(inst, payload)
+        mod = load_rules(self.settings.trading_rules_dir)
+        account = self._account(inst)
+        plans = []
+        for i, s in enumerate(structures):
+            out = build_plan(mod, payload["bars"], s, account)
+            plans.append(TradePlan.model_validate(
+                out | {"structure_index": i, "support": s["S"], "resistance": s["R"]}))
+        return TradePlanReport(range_report=report, rules_version=str(mod.RULES_VERSION),
+                               account=Account.model_validate(account), plans=plans)
+
+    async def trade_plan(self, symbol: str, timeframe: str, days: int,
+                         target: date) -> TradePlanReport:
+        inst = resolve(symbol)
+        tf = _range_tf(timeframe)
+        days = _check_days(days, 2, 10)
+        # Fail fast, before the bar fetch, when either private module is missing.
+        load_rules(self.settings.trading_rules_dir)
+        payload = await self.feed.awindow(inst, tf, target, days)
+        return await anyio.to_thread.run_sync(self._plan_payload, inst, payload)
 
     async def range_chart(self, symbol: str, timeframe: str, days: int, target: date,
                           progress: Progress | None = None,

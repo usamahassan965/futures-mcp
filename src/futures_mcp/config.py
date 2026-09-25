@@ -34,8 +34,17 @@ class Settings(BaseSettings):
     data_dir: Path = Field(default=Path("data"), alias="FUTURES_MCP_DATA_DIR")
     #: Folder holding the (private, un-versioned) range detector module.
     detector_dir: Path = Field(default=Path("private"), alias="FUTURES_MCP_DETECTOR_DIR")
+    #: Folder holding the (private, un-versioned) trading rules. Defaults to the detector's.
+    rules_dir: Path | None = Field(default=None, alias="FUTURES_MCP_RULES_DIR")
     #: Path to the tesseract binary if it is not on PATH.
     tesseract_cmd: str | None = None
+
+    #: Account the trade planner sizes positions against.
+    account_equity: float = Field(default=100_000.0, alias="FUTURES_MCP_ACCOUNT_EQUITY")
+    #: Percent of equity risked per trade.
+    risk_pct: float = Field(default=1.0, alias="FUTURES_MCP_RISK_PCT")
+    #: Reward multiples of the risk distance the planner quotes as targets.
+    targets: tuple[float, ...] = (1.0, 2.0, 3.0)
 
     #: Seconds a bar fetch for a window that is still open may be served from cache.
     live_cache_ttl: int = Field(default=300, alias="FUTURES_MCP_LIVE_CACHE_TTL")
@@ -45,6 +54,10 @@ class Settings(BaseSettings):
     @property
     def session_mode(self) -> bool:
         return bool(self.tradingview_session_id.get_secret_value())
+
+    @property
+    def trading_rules_dir(self) -> Path:
+        return self.rules_dir or self.detector_dir
 
     @property
     def capture_mode(self) -> str:

@@ -11,6 +11,9 @@ import pytest
 FIXTURES = Path(__file__).parent / "fixtures"
 REPO = Path(__file__).resolve().parents[1]
 DETECTOR_DIR = Path(os.environ.get("FUTURES_MCP_DETECTOR_DIR", REPO / "private"))
+RULES_DIR = Path(os.environ.get("FUTURES_MCP_RULES_DIR", REPO / "private"))
+EXAMPLE_DETECTOR = REPO / "examples" / "detector"
+EXAMPLE_RULES = REPO / "examples" / "rules"
 
 WINDOWS = {
     # window folder         -> expected verdict
@@ -53,4 +56,8 @@ needs_tesseract = pytest.mark.skipif(not tesseract_available(), reason="tesserac
 needs_detector = pytest.mark.skipif(
     not (DETECTOR_DIR / "range_screener_v6.py").exists(),
     reason="private range detector not present (it is intentionally not in the repo)",
+)
+needs_rules = pytest.mark.skipif(
+    not (RULES_DIR / "entry_rules.py").exists(),
+    reason="private trading rules not present (they are intentionally not in the repo)",
 )

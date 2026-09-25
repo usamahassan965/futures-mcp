@@ -27,9 +27,20 @@ from futures_mcp.server import build_server
 from futures_mcp.service import FuturesService
 from futures_mcp.symbols import Instrument
 
-from .conftest import DETECTOR_DIR, WINDOWS, Window, needs_detector, needs_tesseract
+from .conftest import (
+    DETECTOR_DIR,
+    EXAMPLE_DETECTOR,
+    EXAMPLE_RULES,
+    RULES_DIR,
+    WINDOWS,
+    Window,
+    needs_detector,
+    needs_rules,
+    needs_tesseract,
+)
 
-TOOLS = {"get_futures_bars", "capture_chart", "analyze_range", "get_range_chart"}
+TOOLS = {"get_futures_bars", "capture_chart", "analyze_range", "get_range_chart",
+         "get_trade_plan"}
 
 
 class FakeFeed:
@@ -63,9 +74,11 @@ def ranged() -> Window:
 
 
 def make_service(tmp_path: Path, window: Window, detector_dir: Path = DETECTOR_DIR,
-                 monkeypatch: pytest.MonkeyPatch | None = None) -> FuturesService:
+                 monkeypatch: pytest.MonkeyPatch | None = None,
+                 rules_dir: Path = RULES_DIR) -> FuturesService:
     settings = Settings(FUTURES_MCP_DATA_DIR=tmp_path, FUTURES_MCP_DETECTOR_DIR=detector_dir,
-                        tradingview_session_id=SecretStr(""), FUTURES_MCP_DEFAULT_MODE=None)
+                        FUTURES_MCP_RULES_DIR=rules_dir, tradingview_session_id=SecretStr(""),
+                        FUTURES_MCP_DEFAULT_MODE=None)
     svc = FuturesService(settings, feed=FakeFeed(window), browser=FakeBrowser())  # type: ignore[arg-type]
     if monkeypatch is not None:
         async def fake_capture(browser: Any, inst: Instrument, tf: str, target: date, days: int,
@@ -164,6 +177,54 @@ async def test_session_mode_without_cookie_is_a_tool_error(tmp_path: Path, range
             assert isinstance(result.content[0], TextContent)
             assert "TRADINGVIEW_SESSION_ID" in result.content[0].text
     assert svc.feed.calls == 0  # type: ignore[attr-defined]
+
+
+async def test_missing_rules_fail_fast(tmp_path: Path, ranged: Window) -> None:
+    svc = make_service(tmp_path, ranged, rules_dir=tmp_path / "nope")
+    async with Client(build_server(svc)) as client:
+        result = await client.call_tool("get_trade_plan", {"end_date": "2026-07-07"})
+    assert result.is_error
+    assert isinstance(result.content[0], TextContent)
+    assert "FUTURES_MCP_RULES_DIR" in result.content[0].text
+    assert svc.feed.calls == 0  # type: ignore[attr-defined]
+
+
+async def test_trade_plan_runs_on_the_toy_rules(tmp_path: Path, ranged: Window) -> None:
+    svc = make_service(tmp_path, ranged, detector_dir=EXAMPLE_DETECTOR, rules_dir=EXAMPLE_RULES)
+    async with Client(build_server(svc)) as client:
+        result = await client.call_tool("get_trade_plan", {"end_date": "2026-07-07"})
+    assert not result.is_error, result.content
+    out = result.structured_content
+    assert out is not None
+    assert out["rules_version"] == "example-toy-v1"
+    assert out["account"] == {"equity": 100000.0, "risk_pct": 1.0, "point_value": 100.0,
+                              "min_contracts": 1, "targets": [1.0, 2.0, 3.0]}
+    assert len(out["plans"]) == len(out["range_report"]["structures"])
+    for plan, structure in zip(out["plans"], out["range_report"]["structures"], strict=True):
+        assert plan["support"] == structure["support"]
+        assert plan["reason"]
+        if plan["signal"]:
+            assert abs(plan["entry"] - plan["stop"]) == pytest.approx(plan["risk_points"])
+            assert [t["r_multiple"] for t in plan["targets"]] == [1.0, 2.0, 3.0]
+
+
+@needs_detector
+@needs_rules
+@pytest.mark.detector
+async def test_trade_plan_on_the_private_rules(tmp_path: Path, ranged: Window) -> None:
+    """The July 7 window carries one armed short; the other structure broke first."""
+    async with Client(build_server(make_service(tmp_path, ranged))) as client:
+        result = await client.call_tool("get_trade_plan", {"end_date": "2026-07-07"})
+    assert not result.is_error, result.content
+    out = result.structured_content
+    assert out is not None and len(out["plans"]) == 2
+    dead, armed = out["plans"]
+    assert not dead["signal"] and "broke" in dead["reason"]
+    assert armed["signal"] and armed["direction"] == "short"
+    assert armed["order"] == "sell_stop"
+    assert armed["contracts"] >= 1
+    assert armed["risk_pct_actual"] > 0
+    assert [t["r_multiple"] for t in armed["targets"]] == [1.0, 2.0, 3.0]
 
 
 @needs_detector

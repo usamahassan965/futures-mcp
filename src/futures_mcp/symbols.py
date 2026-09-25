@@ -16,6 +16,7 @@ class Instrument:
     folder: str          # filesystem-safe name
     description: str
     code: str            # short root used in captions / detector calls
+    point_value: float   # account currency per 1.00 point of price, one contract
 
     @property
     def tv_symbol(self) -> str:
@@ -24,7 +25,8 @@ class Instrument:
 
 REGISTRY: dict[str, Instrument] = {
     "GC1!": Instrument(
-        "GC1!", "COMEX", "gc1", "Gold futures (COMEX), continuous front month", "GC"),
+        "GC1!", "COMEX", "gc1", "Gold futures (COMEX), continuous front month", "GC",
+        point_value=100.0),
 }
 
 _ALIASES = {"GC": "GC1!", "GC1": "GC1!", "COMEX:GC1!": "GC1!", "GOLD": "GC1!"}

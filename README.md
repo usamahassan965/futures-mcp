@@ -27,11 +27,12 @@ prices and bars.
 | `capture_chart` | PNG of the TradingView chart framed on exactly that window, plus the saved path | 20–40 s |
 | `analyze_range` | Verdict `COMPLETED` / `NOT_COMPLETED` / `NO_RANGE`, with each structure's support, resistance, rejections and break time | 2–5 s |
 | `get_range_chart` | The chart with the detected range drawn on it, plus the same report | 30–50 s |
+| `get_trade_plan` | For each detected range: direction, entry order and level, stop and what it is anchored to, R-multiple targets, position size and the exit rules | 2–5 s |
 
 Also:
 
-- **Resources:** `futures://symbols` lists the supported symbols; `futures://status` reports the capture mode and whether the detector and OCR are available.
-- **Prompt:** `range_check` is a ready-made "check this symbol for a range" workflow.
+- **Resources:** `futures://symbols` lists the supported symbols; `futures://status` reports the capture mode and whether the detector, the trading rules and OCR are available.
+- **Prompts:** `range_check` is a ready-made "check this symbol for a range" workflow; `trade_plan` continues it into the trade.
 
 Every tool has a typed output schema (`structuredContent`) and read-only annotations. The long-running tools report progress.
 
@@ -47,6 +48,8 @@ flowchart LR
     SV --> T[capture/tradingview.py<br/>async Playwright]
     SV --> P[ranges/pipeline.py]
     P --> D[(private detector<br/>not in repo)]
+    SV --> R[trading/rules.py<br/>loader + arithmetic guard]
+    R --> E[(private trade rules<br/>not in repo)]
     SV --> O[ranges/overlay.py<br/>OCR calibration + drawing]
     B --> TV1((TradingView<br/>data))
     T --> TV2((TradingView<br/>chart))
@@ -104,6 +107,33 @@ FUTURES_MCP_DETECTOR_DIR=examples/detector
 It meets the same contract with deliberately naive logic: the box is the first day's
 high/low, and 4 alternating edge touches count as complete. Its results are **not** the
 ones shown above. CI uses it to run the range pipeline end to end.
+
+### So are the trading rules
+
+`get_trade_plan` answers the next question — *what is the trade on this range?* — and the
+rules that answer it are private in the same way. At runtime the server imports
+`entry_rules.py` from `FUTURES_MCP_RULES_DIR` (default: the detector folder). The contract
+is documented in [`trading/rules.py`](src/futures_mcp/trading/rules.py): a module exposing
+`RULES_VERSION` and `plan(bars, structure, account)`.
+
+Whatever the rules return, the server re-checks before it leaves the process: the stop must
+be on the correct side of the entry, `risk_points` must equal `|entry − stop|`, every target
+must sit exactly its R multiple away, and the size must clear the minimum. A plan that fails
+any of those is an error, not a trade. **No level or size in the output is ever produced by a
+language model** — the tool computes them and the model may only report them.
+
+Sizing comes from the account settings: `FUTURES_MCP_ACCOUNT_EQUITY` (default 100000),
+`FUTURES_MCP_RISK_PCT` (default 1) and the instrument's point value.
+
+A toy set of rules lives in [`examples/rules/`](examples/rules/entry_rules.py) — last
+rejection, market entry at its close, stop at that bar's extreme — so the tool can be run
+end to end from a clean checkout:
+
+```bash
+FUTURES_MCP_DETECTOR_DIR=examples/detector FUTURES_MCP_RULES_DIR=examples/rules
+```
+
+It is wiring, not a strategy. CI uses it the same way it uses the toy detector.
 
 ## Connect it to Claude
 
@@ -182,6 +212,8 @@ mypy
 ## Scope and limits
 
 - Symbols: `GC1!` (COMEX gold). Adding a symbol is one line in `symbols.py`.
+- Position sizing assumes one account and one instrument's point value; it does not know
+  your broker, margin or fees.
 - Timeframes: bars and charts on H1/H4; range detection on H1, where it is calibrated.
 - Times are shown in UTC+5 (the chart axis) and UTC.
 - Not financial advice. This is an analysis tool.

@@ -24,10 +24,11 @@ from .capture.browser import CaptureError
 from .config import get_settings
 from .data.bars import DataUnavailableError
 from .data.timewindow import parse_date
-from .models import BarsResult, RangeReport
+from .models import BarsResult, RangeReport, TradePlanReport
 from .ranges.detector import DetectorUnavailableError
 from .service import FuturesService
 from .symbols import REGISTRY
+from .trading.rules import RulesOutputError, RulesUnavailableError
 
 logger = logging.getLogger("futures_mcp")
 
@@ -39,6 +40,8 @@ Futures market tools backed by TradingView.
 - analyze_range: detects whether a range (support/resistance with numbered
   rejections) formed in the window, and whether it completed.
 - get_range_chart: the screenshot with the detected range drawn on it.
+- get_trade_plan: turns a detected range into a trade: direction, entry order,
+  stop, targets and position size, from the operator's own rules.
 
 Windows count N trading days ending on end_date (default: the current trading
 day). Chart times are UTC+5, the TradingView axis the charts use. Captures take
@@ -68,7 +71,8 @@ Mode = Annotated[
 READ_ONLY = ToolAnnotations(read_only_hint=True, open_world_hint=True, idempotent_hint=True)
 
 # Failures a caller can act on: their message is passed through as the tool error.
-EXPECTED_ERRORS = (ValueError, DataUnavailableError, CaptureError, DetectorUnavailableError)
+EXPECTED_ERRORS = (ValueError, DataUnavailableError, CaptureError, DetectorUnavailableError,
+                   RulesUnavailableError, RulesOutputError)
 
 
 class ChartResult(BaseModel):
@@ -197,6 +201,22 @@ def build_server(service: FuturesService | None = None) -> MCPServer:
             report=chart.report, path=str(chart.path), drawn=chart.drawn, mode=chart.mode,
             warnings=chart.warnings))
 
+    @mcp.tool(title="Trade plan for a detected range", annotations=READ_ONLY)
+    async def get_trade_plan(
+        symbol: Symbol = "GC1!",
+        timeframe: RangeTimeframe = "H1",
+        days: Annotated[int, Field(ge=2, le=10, description="Trading days to scan")] = 3,
+        end_date: EndDate = None,
+    ) -> TradePlanReport:
+        """Detect the range, then apply the configured trading rules to each structure:
+        direction, entry order and level, stop, R-multiple targets and position size for
+        the configured account, plus the exit instructions. Plans that the rules do not
+        arm come back with signal=false and the reason. Every level is computed by the
+        rules and re-checked by the server; do not invent or adjust prices or sizes.
+        Analysis only, not advice."""
+        with _tool_errors():
+            return await svc.trade_plan(symbol, timeframe, days, parse_date(end_date))
+
     @mcp.resource("futures://symbols", name="symbols", mime_type="application/json",
                   description="Symbols the tools accept")
     def symbols() -> str:
@@ -213,6 +233,20 @@ def build_server(service: FuturesService | None = None) -> MCPServer:
                   meta={"ui": {"csp": {"resourceDomains": ["https://unpkg.com"]}}})
     def chart_view() -> str:
         return (files("futures_mcp") / "ui" / "chart.html").read_text(encoding="utf-8")
+
+    @mcp.prompt(title="Plan the trade on a range")
+    def trade_plan(symbol: str = "GC1!", days: str = "3") -> str:
+        """Check a symbol for a range setup and, if there is one, plan the trade."""
+        return (
+            f"Check {symbol} on H1 over the last {days} trading days with analyze_range, then "
+            f"call get_trade_plan for the same window. For each structure report whether a "
+            f"trade is armed and why, and when it is: the direction, the order type and its "
+            f"level, the stop and what it is anchored to, the targets with their R multiples, "
+            f"the position size and the risk in dollars and percent, then the order life and "
+            f"the exit rules. Quote the numbers exactly as the tool returned them - never "
+            f"recompute or round them - and repeat any notes the plan carries. Finish with "
+            f"the reminder that this is analysis, not advice."
+        )
 
     @mcp.prompt(title="Check for a range setup")
     def range_check(symbol: str = "GC1!", days: str = "3") -> str:

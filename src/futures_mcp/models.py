@@ -81,6 +81,51 @@ class RangeStructure(BaseModel):
     caption: str
 
 
+class TradeTarget(BaseModel):
+    r_multiple: float = Field(description="Multiple of the risk distance")
+    price: float
+
+
+class Account(BaseModel):
+    equity: float
+    risk_pct: float = Field(description="Percent of equity risked per trade")
+    point_value: float = Field(description="Account currency per 1.00 point, one contract")
+    min_contracts: int
+    targets: list[float]
+
+
+class TradePlan(BaseModel):
+    """One structure's trade, or why there isn't one. Prices come from the rules, never
+    from a model; the server re-checks the arithmetic before returning them."""
+
+    structure_index: int = Field(description="Index into the range report's structures")
+    support: float
+    resistance: float
+    signal: bool = Field(description="False when the rules see no trade yet")
+    reason: str = Field(description="What armed the trade, or what is missing")
+    direction: Literal["long", "short"] | None = None
+    order: str | None = Field(default=None, description="buy_stop | sell_stop | market")
+    entry: float | None = None
+    entry_basis: str | None = None
+    stop: float | None = None
+    stop_basis: str | None = None
+    risk_points: float | None = Field(default=None, description="|entry - stop|")
+    risk_per_contract: float | None = None
+    contracts: int | None = None
+    risk_dollars: float | None = None
+    risk_pct_actual: float | None = Field(
+        default=None, description="Risk of the sized position, which can exceed risk_pct")
+    targets: list[TradeTarget] = []
+    signal_rejection: int | None = Field(default=None, description="Rejection that armed it")
+    confirm_time: str | None = Field(default=None, description="UTC+5 chart time")
+    order_life: str | None = Field(default=None, description="When the order is cancelled")
+    exits: list[str] = []
+    triggered: bool | None = Field(
+        default=None, description="Whether the order already traded through in this window")
+    triggered_time: str | None = None
+    notes: list[str] = []
+
+
 class RangeReport(BaseModel):
     symbol: str
     timeframe: str
@@ -93,3 +138,10 @@ class RangeReport(BaseModel):
     structures: list[RangeStructure]
     candidates: dict[str, int] = Field(
         description="Detector hit counts before selection: completed / anticipation / demoted")
+
+
+class TradePlanReport(BaseModel):
+    range_report: RangeReport
+    rules_version: str = Field(description="Version string of the loaded trading rules")
+    account: Account
+    plans: list[TradePlan] = Field(description="One per detected structure, in the same order")
